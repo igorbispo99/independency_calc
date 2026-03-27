@@ -26,8 +26,9 @@ Sendo um projeto "Zero-Config" contido num único ficheiro, não precisa de inst
 
 - Faça o clone do repositório:
 
-git clone [https://github.com/SEU-USUARIO/NOME-DO-REPOSITORIO.git](https://github.com/SEU-USUARIO/NOME-DO-REPOSITORIO.git)
-
+```sh
+git clone [https://github.com/igorbispo99/independency_calc.git](https://github.com/igorbispo99/independency_calc.git)
+```
 - Navegue até à pasta do projeto.
 - Dê um duplo clique no ficheiro index.html para abri-lo no seu navegador web preferido.
 
