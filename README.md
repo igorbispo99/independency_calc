@@ -1,3 +1,6 @@
+
+<img width="1280" height="640" alt="capa-independencia-financeira" src="https://github.com/user-attachments/assets/6f96dff2-ec57-4319-90e4-a84c99748621" />
+
 # 📈 Simulador de Independência Financeira
 
 Uma aplicação web interativa e de ficheiro único (single-file) desenhada para ajudar a calcular e visualizar a sua jornada rumo à independência financeira.
