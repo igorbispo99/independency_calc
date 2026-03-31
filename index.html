@@ -134,6 +134,7 @@
       // Estados para dados ao vivo do BCB
       const [liveData, setLiveData] = useState(null);       // { cdi, cdiDate, ipca, ipcaDate }
       const [dataStatus, setDataStatus] = useState('loading'); // 'loading' | 'live' | 'offline'
+      const [taxRate, setTaxRate] = useState(15);
       const [isManualCdi, setIsManualCdi] = useState(false);
       const [isManualIpca, setIsManualIpca] = useState(false);
       const [hoverInfo, setHoverInfo] = useState(null);
@@ -199,10 +200,11 @@
           return { months: 0, data: [], maxMonths: 0, isPossible: false, error: "Insira valores válidos maiores que zero." };
         }
 
-        const realAnnualRate = (1 + cdiRate / 100) / (1 + inflationRate / 100) - 1;
-        
+        const netCdiRate = cdiRate * (1 - taxRate / 100);
+        const realAnnualRate = (1 + netCdiRate / 100) / (1 + inflationRate / 100) - 1;
+
         if (realAnnualRate <= 0) {
-           return { months: 0, data: [], maxMonths: 0, isPossible: false, error: "A inflação está maior ou igual ao CDI." };
+           return { months: 0, data: [], maxMonths: 0, isPossible: false, error: "O CDI líquido de IR está menor ou igual à inflação." };
         }
 
         const realMonthlyRate = Math.pow(1 + realAnnualRate, 1 / 12) - 1;
@@ -262,7 +264,7 @@
           nominalPatrimony: patrimony * inflationFactor,
           inflationFactor,
         };
-      }, [activeIncome, initialPatrimony, savingsRate, cdiRate, inflationRate]);
+      }, [activeIncome, initialPatrimony, savingsRate, cdiRate, inflationRate, taxRate]);
 
       const formatCurrency = (value) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -513,7 +515,7 @@
                   </div>
                   {initialPatrimony > 0 && (
                     <p className="text-xs text-emerald-700">
-                      Rende {formatCurrency(initialPatrimony * (Math.pow(1 + ((1 + cdiRate / 100) / (1 + inflationRate / 100) - 1), 1 / 12) - 1))} /mês já no início.
+                      Rende {formatCurrency(initialPatrimony * (Math.pow(1 + ((1 + cdiRate * (1 - taxRate / 100) / 100) / (1 + inflationRate / 100) - 1), 1 / 12) - 1))} /mês já no início (líquido de IR).
                     </p>
                   )}
                 </div>
@@ -631,10 +633,41 @@
                   ))}
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 block">
+                    Imposto de Renda sobre rendimentos
+                  </label>
+                  <div className="flex gap-1.5">
+                    {[
+                      { label: '22,5%', value: 22.5, desc: '≤ 180d' },
+                      { label: '20%', value: 20, desc: '≤ 360d' },
+                      { label: '17,5%', value: 17.5, desc: '≤ 720d' },
+                      { label: '15%', value: 15, desc: '> 720d' },
+                      { label: '0%', value: 0, desc: 'Isento' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setTaxRate(opt.value)}
+                        className={`flex-1 py-1.5 text-xs font-semibold rounded-md border transition-colors flex flex-col items-center ${
+                          taxRate === opt.value
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-100'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        <span className={`text-[9px] font-normal ${taxRate === opt.value ? 'text-blue-200' : 'text-slate-400'}`}>{opt.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    CDI bruto: {cdiRate}% → <strong>líquido: {(cdiRate * (1 - taxRate / 100)).toFixed(2)}% a.a.</strong>
+                  </p>
+                </div>
+
                 <div className="bg-slate-50 p-3 rounded-lg flex gap-2 items-start">
                   <Info className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
                   <p className="text-xs text-slate-600">
-                    Os dados de <strong>SELIC</strong> (proxy do CDI) e <strong>IPCA</strong> são carregados em tempo real da API pública do <strong>Banco Central do Brasil</strong> (SGS). Todos os valores do simulador usam a <strong>Taxa Real</strong> (CDI − inflação), mostrando tudo em <strong>poder de compra de hoje</strong>.
+                    Os dados de <strong>SELIC</strong> (proxy do CDI) e <strong>IPCA</strong> são carregados em tempo real da API pública do <strong>Banco Central do Brasil</strong> (SGS). O simulador aplica o <strong>Imposto de Renda</strong> sobre o rendimento nominal e calcula a <strong>Taxa Real Líquida</strong>, mostrando tudo em <strong>poder de compra de hoje</strong>.
                   </p>
                 </div>
               </div>
@@ -702,7 +735,7 @@
                       <div className="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
                         {results.isPossible ? `${results.realAnnualRate.toFixed(2)}%` : "---"}
                       </div>
-                      <p className="text-[10px] text-slate-400">CDI descontado da inflação</p>
+                      <p className="text-[10px] text-slate-400">CDI líquido de IR e inflação</p>
                     </div>
                   </div>
                 </div>
