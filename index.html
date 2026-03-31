@@ -213,6 +213,7 @@
         let currentMonths = 0;
         let patrimony = Math.max(0, initialPatrimony);
         let passiveIncome = patrimony * realMonthlyRate;
+        let crossoverPatrimony = patrimony;
         const dataPoints = [];
 
         const MAX_MONTHS = 1800;
@@ -233,6 +234,8 @@
             });
           }
         }
+
+        crossoverPatrimony = patrimony;
 
         const extraMonths = Math.floor(currentMonths * 0.15);
         for (let i = 1; i <= extraMonths; i++) {
@@ -257,11 +260,11 @@
           remainingMonths: currentMonths % 12,
           data: dataPoints,
           maxMonths: currentMonths + extraMonths,
-          finalPatrimony: patrimony,
+          finalPatrimony: crossoverPatrimony,
           isPossible: currentMonths < MAX_MONTHS,
           realAnnualRate: realAnnualRate * 100,
           nominalPassiveIncome: activeIncome * inflationFactor,
-          nominalPatrimony: patrimony * inflationFactor,
+          nominalPatrimony: crossoverPatrimony * inflationFactor,
           inflationFactor,
         };
       }, [activeIncome, initialPatrimony, savingsRate, cdiRate, inflationRate, taxRate]);
