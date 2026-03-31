@@ -249,6 +249,16 @@
         }).format(value);
       };
 
+      const formatCurrencyCompact = (value) => {
+        if (value >= 1_000_000_000) {
+          return `R$ ${(value / 1_000_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} Bi`;
+        }
+        if (value >= 1_000_000) {
+          return `R$ ${(value / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} M`;
+        }
+        return formatCurrency(value);
+      };
+
       const renderChart = () => {
         if (!results.isPossible || results.data.length === 0) return null;
 
@@ -571,17 +581,17 @@
                     <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 shrink-0">
                       <Clock className="w-7 h-7" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Tempo Necessário</p>
+                    <div className="min-w-0 overflow-hidden">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider truncate" title="Tempo Necessário">Tempo Necessário</p>
                       {results.isPossible ? (
-                        <div className="text-xl font-bold text-slate-800 leading-tight">
+                        <div className="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
                           {results.years > 0 && <span>{results.years}a</span>}
                           {results.years > 0 && results.remainingMonths > 0 && <span> </span>}
                           {results.remainingMonths > 0 && <span>{results.remainingMonths}m</span>}
                           {results.years === 0 && results.remainingMonths === 0 && <span>Imediato</span>}
                         </div>
                       ) : (
-                        <div className="text-sm font-bold text-red-500">
+                        <div className="text-sm font-bold text-red-500 break-words">
                           {results.error || "Mais de 150 anos"}
                         </div>
                       )}
@@ -591,7 +601,7 @@
                         const absDiffMo = Math.abs(diff) % 12;
                         const label = absDiffYr > 0 && absDiffMo > 0 ? `${absDiffYr}a ${absDiffMo}m` : absDiffYr > 0 ? `${absDiffYr}a` : `${absDiffMo}m`;
                         return (
-                          <div className={`text-xs font-semibold mt-0.5 ${diff < 0 ? 'text-emerald-600' : diff > 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                          <div className={`text-xs font-semibold mt-0.5 truncate ${diff < 0 ? 'text-emerald-600' : diff > 0 ? 'text-red-500' : 'text-slate-400'}`}>
                             {diff < 0 ? `▼ ${label} mais rápido` : diff > 0 ? `▲ ${label} mais lento` : '= igual ao fixado'}
                           </div>
                         );
@@ -603,11 +613,19 @@
                     <div className="p-3 bg-blue-100 rounded-full text-blue-600 shrink-0">
                       <TrendingUp className="w-7 h-7" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Patrimônio Alvo</p>
-                      <div className="text-xl font-bold text-slate-800 leading-tight truncate">
-                        {results.isPossible ? formatCurrency(results.finalPatrimony) : "---"}
+                    <div className="min-w-0 overflow-hidden">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider truncate" title="Patrimônio Alvo">Patrimônio Alvo</p>
+                      <div
+                        className="text-lg sm:text-xl font-bold text-slate-800 leading-tight truncate"
+                        title={results.isPossible ? formatCurrency(results.finalPatrimony) : undefined}
+                      >
+                        {results.isPossible ? formatCurrencyCompact(results.finalPatrimony) : "---"}
                       </div>
+                      {results.isPossible && (
+                        <p className="text-[10px] text-slate-400 truncate" title={formatCurrency(results.finalPatrimony)}>
+                          {formatCurrency(results.finalPatrimony)}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -615,12 +633,12 @@
                     <div className="p-3 bg-amber-100 rounded-full text-amber-600 shrink-0">
                       <Target className="w-7 h-7" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Taxa Real Anual</p>
-                      <div className="text-xl font-bold text-slate-800 leading-tight">
+                    <div className="min-w-0 overflow-hidden">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider truncate" title="Taxa Real Anual">Taxa Real Anual</p>
+                      <div className="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
                         {results.isPossible ? `${results.realAnnualRate.toFixed(2)}%` : "---"}
                       </div>
-                      <p className="text-[10px] text-slate-400">CDI descontado da inflação</p>
+                      <p className="text-[10px] text-slate-400 truncate">CDI descontado da inflação</p>
                     </div>
                   </div>
                 </div>
