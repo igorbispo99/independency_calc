@@ -19,7 +19,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useMemo } = React;
+    const { useState, useMemo, useEffect, useCallback } = React;
 
     // Ícones SVG inline para não depender de pacotes externos
     const Target = ({ className }) => (
@@ -46,12 +46,133 @@
       </svg>
     );
 
+    const Refresh = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+      </svg>
+    );
+
+    const Wifi = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M5 12.55a11 11 0 0114 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+      </svg>
+    );
+
+    const WifiOff = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0119 12.55"/><path d="M5 12.55a10.94 10.94 0 015.17-2.39"/><path d="M10.71 5.05A16 16 0 0122.56 9"/><path d="M1.42 9a15.91 15.91 0 014.7-2.88"/><path d="M8.53 16.11a6 6 0 016.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+      </svg>
+    );
+
+    // --- Serviço de dados do Banco Central do Brasil ---
+    const BCB_API_BASE = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs';
+
+    // Séries do SGS (Sistema Gerenciador de Séries Temporais):
+    // 432  = Taxa SELIC Meta (% a.a.) — proxy fiel do CDI
+    // 433  = IPCA variação mensal (%)
+    const SERIES = {
+      SELIC_META: 432,
+      IPCA_MENSAL: 433,
+    };
+
+    async function fetchBCBSeries(seriesId, lastN = 1) {
+      const url = `${BCB_API_BASE}.${seriesId}/dados/ultimos/${lastN}?formato=json`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`BCB API error: ${response.status}`);
+      return response.json();
+    }
+
+    function parseDecimalBR(str) {
+      return parseFloat(str.replace(',', '.'));
+    }
+
+    function parseDateBR(str) {
+      const [dd, mm, yyyy] = str.split('/');
+      return new Date(yyyy, mm - 1, dd);
+    }
+
+    async function fetchLiveRates() {
+      // Busca SELIC Meta (1 valor mais recente) e IPCA mensal (últimos 12 meses)
+      const [selicData, ipcaData] = await Promise.all([
+        fetchBCBSeries(SERIES.SELIC_META, 1),
+        fetchBCBSeries(SERIES.IPCA_MENSAL, 12),
+      ]);
+
+      // SELIC Meta já vem como taxa anual
+      const selicMeta = parseDecimalBR(selicData[0].valor);
+      const selicDate = parseDateBR(selicData[0].data);
+
+      // IPCA: acumular os últimos 12 meses via produto composto
+      const ipca12m = ipcaData.reduce((acc, item) => {
+        return acc * (1 + parseDecimalBR(item.valor) / 100);
+      }, 1);
+      const ipcaAcumulado = (ipca12m - 1) * 100;
+      const ipcaDate = parseDateBR(ipcaData[ipcaData.length - 1].data);
+
+      return {
+        cdi: Math.round(selicMeta * 100) / 100,
+        cdiDate: selicDate,
+        ipca: Math.round(ipcaAcumulado * 100) / 100,
+        ipcaDate: ipcaDate,
+      };
+    }
+
     function App() {
       // Estados para os parâmetros
       const [activeIncome, setActiveIncome] = useState(10000);
       const [savingsRate, setSavingsRate] = useState(20);
       const [cdiRate, setCdiRate] = useState(10.5);
       const [inflationRate, setInflationRate] = useState(4.5);
+
+      // Estados para dados ao vivo do BCB
+      const [liveData, setLiveData] = useState(null);       // { cdi, cdiDate, ipca, ipcaDate }
+      const [dataStatus, setDataStatus] = useState('loading'); // 'loading' | 'live' | 'offline'
+      const [isManualCdi, setIsManualCdi] = useState(false);
+      const [isManualIpca, setIsManualIpca] = useState(false);
+
+      const loadLiveData = useCallback(async () => {
+        setDataStatus('loading');
+        try {
+          const data = await fetchLiveRates();
+          setLiveData(data);
+          setDataStatus('live');
+          if (!isManualCdi) setCdiRate(data.cdi);
+          if (!isManualIpca) setInflationRate(data.ipca);
+        } catch (err) {
+          console.error('Erro ao buscar dados do BCB:', err);
+          setDataStatus('offline');
+        }
+      }, [isManualCdi, isManualIpca]);
+
+      useEffect(() => {
+        loadLiveData();
+      }, []);
+
+      const handleCdiChange = (value) => {
+        setCdiRate(value);
+        setIsManualCdi(true);
+      };
+
+      const handleInflationChange = (value) => {
+        setInflationRate(value);
+        setIsManualIpca(true);
+      };
+
+      const resetToLive = (field) => {
+        if (!liveData) return;
+        if (field === 'cdi') {
+          setCdiRate(liveData.cdi);
+          setIsManualCdi(false);
+        } else {
+          setInflationRate(liveData.ipca);
+          setIsManualIpca(false);
+        }
+      };
+
+      const formatDate = (date) => {
+        if (!date) return '';
+        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      };
 
       // Cálculos principais
       const results = useMemo(() => {
@@ -271,38 +392,115 @@
                   </p>
                 </div>
 
+                {/* Status da conexão com BCB */}
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                  dataStatus === 'live' ? 'bg-emerald-50 border-emerald-200' :
+                  dataStatus === 'loading' ? 'bg-amber-50 border-amber-200' :
+                  'bg-red-50 border-red-200'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {dataStatus === 'live' ? (
+                      <Wifi className="w-4 h-4 text-emerald-600" />
+                    ) : dataStatus === 'loading' ? (
+                      <Refresh className="w-4 h-4 text-amber-600 animate-spin" />
+                    ) : (
+                      <WifiOff className="w-4 h-4 text-red-500" />
+                    )}
+                    <span className={`text-xs font-medium ${
+                      dataStatus === 'live' ? 'text-emerald-700' :
+                      dataStatus === 'loading' ? 'text-amber-700' :
+                      'text-red-600'
+                    }`}>
+                      {dataStatus === 'live' ? 'Dados ao vivo — Banco Central' :
+                       dataStatus === 'loading' ? 'Buscando dados do BCB...' :
+                       'Offline — usando valores manuais'}
+                    </span>
+                  </div>
+                  {dataStatus !== 'loading' && (
+                    <button
+                      onClick={loadLiveData}
+                      className="p-1 rounded hover:bg-white/50 transition-colors"
+                      title="Atualizar dados"
+                    >
+                      <Refresh className="w-3.5 h-3.5 text-slate-500" />
+                    </button>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 block text-center">
-                      CDI Anual (%)
+                      CDI / SELIC (% a.a.)
                     </label>
-                    <input 
-                      type="number" 
-                      step="0.1"
-                      value={cdiRate}
-                      onChange={(e) => setCdiRate(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-center"
-                    />
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={cdiRate}
+                        onChange={(e) => handleCdiChange(Number(e.target.value))}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-center ${
+                          isManualCdi ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-300'
+                        }`}
+                      />
+                      {isManualCdi && liveData && (
+                        <button
+                          onClick={() => resetToLive('cdi')}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 bg-white px-1.5 py-0.5 rounded border border-blue-200"
+                          title={`Restaurar valor ao vivo: ${liveData.cdi}%`}
+                        >
+                          Ao vivo
+                        </button>
+                      )}
+                    </div>
+                    {liveData && !isManualCdi && (
+                      <p className="text-[10px] text-emerald-600 text-center">
+                        Ref: {formatDate(liveData.cdiDate)}
+                      </p>
+                    )}
+                    {isManualCdi && (
+                      <p className="text-[10px] text-amber-600 text-center">Valor manual</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 block text-center">
-                      Inflação Anual (%)
+                      IPCA 12m (% a.a.)
                     </label>
-                    <input 
-                      type="number" 
-                      step="0.1"
-                      value={inflationRate}
-                      onChange={(e) => setInflationRate(Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-center"
-                    />
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={inflationRate}
+                        onChange={(e) => handleInflationChange(Number(e.target.value))}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-center ${
+                          isManualIpca ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-300'
+                        }`}
+                      />
+                      {isManualIpca && liveData && (
+                        <button
+                          onClick={() => resetToLive('ipca')}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 bg-white px-1.5 py-0.5 rounded border border-blue-200"
+                          title={`Restaurar valor ao vivo: ${liveData.ipca}%`}
+                        >
+                          Ao vivo
+                        </button>
+                      )}
+                    </div>
+                    {liveData && !isManualIpca && (
+                      <p className="text-[10px] text-emerald-600 text-center">
+                        Ref: {formatDate(liveData.ipcaDate)}
+                      </p>
+                    )}
+                    {isManualIpca && (
+                      <p className="text-[10px] text-amber-600 text-center">Valor manual</p>
+                    )}
                   </div>
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-lg flex gap-2 items-start">
                   <Info className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
                   <p className="text-xs text-slate-600">
-                    O cálculo usa a <strong>Taxa Real</strong> (CDI descontado da Inflação) para garantir que sua renda passiva mantenha o poder de compra no futuro.
+                    Os dados de <strong>SELIC</strong> (proxy do CDI) e <strong>IPCA</strong> são carregados em tempo real da API pública do <strong>Banco Central do Brasil</strong> (SGS). O cálculo usa a <strong>Taxa Real</strong> (CDI descontado da Inflação) para garantir que sua renda passiva mantenha o poder de compra.
                   </p>
                 </div>
               </div>
