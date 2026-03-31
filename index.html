@@ -129,6 +129,8 @@
       const [dataStatus, setDataStatus] = useState('loading'); // 'loading' | 'live' | 'offline'
       const [isManualCdi, setIsManualCdi] = useState(false);
       const [isManualIpca, setIsManualIpca] = useState(false);
+      const [hoverInfo, setHoverInfo] = useState(null);
+      const [pinnedScenario, setPinnedScenario] = useState(null);
 
       const loadLiveData = useCallback(async () => {
         setDataStatus('loading');
@@ -234,7 +236,8 @@
           data: dataPoints,
           maxMonths: currentMonths + extraMonths,
           finalPatrimony: patrimony,
-          isPossible: currentMonths < MAX_MONTHS
+          isPossible: currentMonths < MAX_MONTHS,
+          realAnnualRate: realAnnualRate * 100,
         };
       }, [activeIncome, savingsRate, cdiRate, inflationRate]);
 
@@ -252,11 +255,11 @@
         const width = 800;
         const height = 300;
         const padding = { top: 20, right: 20, bottom: 40, left: 80 };
-        
+
         const chartWidth = width - padding.left - padding.right;
         const chartHeight = height - padding.top - padding.bottom;
 
-        const maxX = Math.max(results.maxMonths, 1);
+        const maxX = Math.max(results.maxMonths, pinnedScenario?.maxMonths || 0, 1);
         const maxY = Math.max(activeIncome * 1.3, 1);
 
         const getX = (month) => padding.left + (month / maxX) * chartWidth;
@@ -274,27 +277,73 @@
         const maxYears = Math.ceil(maxX / 12);
         const labelStep = Math.max(1, Math.ceil(maxYears / 8));
 
+        const pinnedPath = pinnedScenario && pinnedScenario.data.length > 0
+          ? pinnedScenario.data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(d.month)} ${getY(d.passiveIncome)}`).join(' ')
+          : null;
+
+        const handleMouseMove = (e) => {
+          const svgEl = e.currentTarget;
+          const rect = svgEl.getBoundingClientRect();
+          const scaleX = width / rect.width;
+          const mouseXsvg = (e.clientX - rect.left) * scaleX;
+          const mouseMonth = ((mouseXsvg - padding.left) / chartWidth) * maxX;
+
+          if (mouseMonth < 0 || mouseMonth > maxX) { setHoverInfo(null); return; }
+
+          const data = results.data;
+          let idx = data.findIndex(d => d.month >= mouseMonth);
+          let passiveIncome, patrimony;
+          if (idx <= 0) {
+            passiveIncome = data[0].passiveIncome || 0;
+            patrimony = data[0].patrimony || 0;
+          } else if (idx >= data.length) {
+            passiveIncome = data[data.length - 1].passiveIncome;
+            patrimony = data[data.length - 1].patrimony || 0;
+          } else {
+            const prev = data[idx - 1], next = data[idx];
+            const t = (mouseMonth - prev.month) / (next.month - prev.month);
+            passiveIncome = prev.passiveIncome + t * (next.passiveIncome - prev.passiveIncome);
+            patrimony = (prev.patrimony || 0) + t * ((next.patrimony || 0) - (prev.patrimony || 0));
+          }
+
+          setHoverInfo({ month: Math.round(mouseMonth), passiveIncome, patrimony, svgX: getX(mouseMonth), svgY: getY(passiveIncome) });
+        };
+
         return (
           <div className="overflow-x-auto w-full">
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto min-w-[600px]">
+            <svg
+              viewBox={`0 0 ${width} ${height}`}
+              className="w-full h-auto min-w-[600px] cursor-crosshair"
+              onMouseMove={handleMouseMove}
+              onMouseLeave={() => setHoverInfo(null)}
+            >
               <line x1={padding.left} y1={padding.top + chartHeight} x2={width - padding.right} y2={padding.top + chartHeight} stroke="#94a3b8" strokeWidth="1" />
               <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="#94a3b8" strokeWidth="1" />
 
-              {[0, 0.5, 1, 1.3].map((factor) => {
+              {[0, 0.25, 0.5, 0.75, 1, 1.3].map((factor) => {
                 const yVal = activeIncome * factor;
                 const yPos = getY(yVal);
+                const isMain = [0, 0.5, 1, 1.3].includes(factor);
+                const isMid = [0.25, 0.75].includes(factor);
                 return (
                   <g key={factor}>
-                    <line x1={padding.left} y1={yPos} x2={width - padding.right} y2={yPos} stroke="#e2e8f0" strokeDasharray="4,4" />
-                    <text x={padding.left - 10} y={yPos + 4} textAnchor="end" fontSize="12" fill="#64748b">
-                      {formatCurrency(yVal)}
-                    </text>
+                    <line x1={padding.left} y1={yPos} x2={width - padding.right} y2={yPos} stroke={isMid ? "#cbd5e1" : "#e2e8f0"} strokeDasharray={isMid ? "3,5" : "4,4"} />
+                    {isMain && (
+                      <text x={padding.left - 10} y={yPos + 4} textAnchor="end" fontSize="12" fill="#64748b">
+                        {formatCurrency(yVal)}
+                      </text>
+                    )}
+                    {isMid && (
+                      <text x={padding.left - 10} y={yPos + 4} textAnchor="end" fontSize="10" fill="#94a3b8">
+                        {Math.round(factor * 100)}%
+                      </text>
+                    )}
                   </g>
                 );
               })}
 
               {Array.from({ length: maxYears + 1 }).map((_, i) => {
-                if (i % labelStep !== 0) return null; 
+                if (i % labelStep !== 0) return null;
                 const xPos = getX(i * 12);
                 return (
                   <g key={i}>
@@ -312,6 +361,11 @@
                   <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
                 </linearGradient>
               </defs>
+
+              {pinnedPath && (
+                <path d={pinnedPath} fill="none" stroke="#94a3b8" strokeWidth="2" strokeDasharray="6,4" strokeLinecap="round" />
+              )}
+
               <path d={areaPath} fill="url(#passiveGradient)" />
               <path d={passivePath} fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
 
@@ -330,6 +384,24 @@
                   </text>
                 </g>
               )}
+
+              {hoverInfo && (() => {
+                const tipW = 190, tipH = 62;
+                const tipX = hoverInfo.svgX + 12 + tipW > width - padding.right ? hoverInfo.svgX - tipW - 12 : hoverInfo.svgX + 12;
+                const tipY = Math.max(padding.top, Math.min(hoverInfo.svgY - 30, padding.top + chartHeight - tipH));
+                const yr = Math.floor(hoverInfo.month / 12), mo = hoverInfo.month % 12;
+                const label = yr > 0 && mo > 0 ? `${yr}a ${mo}m` : yr > 0 ? `${yr} anos` : mo > 0 ? `${mo} meses` : 'Início';
+                return (
+                  <g>
+                    <line x1={hoverInfo.svgX} y1={padding.top} x2={hoverInfo.svgX} y2={padding.top + chartHeight} stroke="#64748b" strokeWidth="1" strokeDasharray="3,3" />
+                    <circle cx={hoverInfo.svgX} cy={hoverInfo.svgY} r="5" fill="#10b981" stroke="white" strokeWidth="2" />
+                    <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="6" fill="#1e293b" opacity="0.92" />
+                    <text x={tipX + 10} y={tipY + 17} fontSize="11" fill="#94a3b8">{label}</text>
+                    <text x={tipX + 10} y={tipY + 34} fontSize="11" fill="#34d399" fontWeight="bold">Passiva: {formatCurrency(hoverInfo.passiveIncome)}</text>
+                    <text x={tipX + 10} y={tipY + 51} fontSize="11" fill="#60a5fa">Patrimônio: {formatCurrency(hoverInfo.patrimony)}</text>
+                  </g>
+                );
+              })()}
             </svg>
           </div>
         );
@@ -379,10 +451,25 @@
                     </label>
                     <span className="text-lg font-bold text-blue-600">{savingsRate}%</span>
                   </div>
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="100" 
+                  <div className="flex gap-1.5">
+                    {[10, 20, 30, 50, 70].map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setSavingsRate(p)}
+                        className={`flex-1 py-1 text-xs font-semibold rounded-md border transition-colors ${
+                          savingsRate === p
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-100'
+                        }`}
+                      >
+                        {p}%
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="100"
                     value={savingsRate}
                     onChange={(e) => setSavingsRate(Number(e.target.value))}
                     className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
@@ -479,44 +566,153 @@
               </div>
 
               <div className="lg:col-span-2 space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex items-center gap-4">
-                    <div className="p-4 bg-emerald-100 rounded-full text-emerald-600">
-                      <Clock className="w-8 h-8" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex items-center gap-3">
+                    <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 shrink-0">
+                      <Clock className="w-7 h-7" />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Tempo Necessário</p>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Tempo Necessário</p>
                       {results.isPossible ? (
-                        <div className="text-2xl font-bold text-slate-800">
-                          {results.years > 0 && <span>{results.years} anos</span>}
-                          {results.years > 0 && results.remainingMonths > 0 && <span> e </span>}
-                          {results.remainingMonths > 0 && <span>{results.remainingMonths} meses</span>}
+                        <div className="text-xl font-bold text-slate-800 leading-tight">
+                          {results.years > 0 && <span>{results.years}a</span>}
+                          {results.years > 0 && results.remainingMonths > 0 && <span> </span>}
+                          {results.remainingMonths > 0 && <span>{results.remainingMonths}m</span>}
                           {results.years === 0 && results.remainingMonths === 0 && <span>Imediato</span>}
                         </div>
                       ) : (
-                        <div className="text-lg font-bold text-red-500 text-sm">
+                        <div className="text-sm font-bold text-red-500">
                           {results.error || "Mais de 150 anos"}
                         </div>
                       )}
+                      {pinnedScenario && results.isPossible && (() => {
+                        const diff = results.months - pinnedScenario.months;
+                        const absDiffYr = Math.floor(Math.abs(diff) / 12);
+                        const absDiffMo = Math.abs(diff) % 12;
+                        const label = absDiffYr > 0 && absDiffMo > 0 ? `${absDiffYr}a ${absDiffMo}m` : absDiffYr > 0 ? `${absDiffYr}a` : `${absDiffMo}m`;
+                        return (
+                          <div className={`text-xs font-semibold mt-0.5 ${diff < 0 ? 'text-emerald-600' : diff > 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                            {diff < 0 ? `▼ ${label} mais rápido` : diff > 0 ? `▲ ${label} mais lento` : '= igual ao fixado'}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex items-center gap-4">
-                    <div className="p-4 bg-blue-100 rounded-full text-blue-600">
-                      <TrendingUp className="w-8 h-8" />
+                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex items-center gap-3">
+                    <div className="p-3 bg-blue-100 rounded-full text-blue-600 shrink-0">
+                      <TrendingUp className="w-7 h-7" />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">Patrimônio Alvo Acumulado</p>
-                      <div className="text-2xl font-bold text-slate-800">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Patrimônio Alvo</p>
+                      <div className="text-xl font-bold text-slate-800 leading-tight truncate">
                         {results.isPossible ? formatCurrency(results.finalPatrimony) : "---"}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex items-center gap-3">
+                    <div className="p-3 bg-amber-100 rounded-full text-amber-600 shrink-0">
+                      <Target className="w-7 h-7" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Taxa Real Anual</p>
+                      <div className="text-xl font-bold text-slate-800 leading-tight">
+                        {results.isPossible ? `${results.realAnnualRate.toFixed(2)}%` : "---"}
+                      </div>
+                      <p className="text-[10px] text-slate-400">CDI descontado da inflação</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                  <h3 className="text-lg font-semibold text-slate-800 mb-6">Evolução da Renda Passiva Mensal</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-slate-800">Evolução da Renda Passiva Mensal</h3>
+                    <div className="flex items-center gap-2">
+                      {pinnedScenario && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <span className="inline-block w-6 h-0.5 bg-slate-400" style={{borderTop: '2px dashed #94a3b8'}}></span>
+                          <span>Cenário fixado ({pinnedScenario.savingsRate}% poupança)</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (pinnedScenario) {
+                            setPinnedScenario(null);
+                          } else if (results.isPossible) {
+                            setPinnedScenario({
+                              savingsRate,
+                              cdiRate,
+                              inflationRate,
+                              months: results.months,
+                              maxMonths: results.maxMonths,
+                              data: results.data,
+                            });
+                          }
+                        }}
+                        disabled={!results.isPossible && !pinnedScenario}
+                        className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                          pinnedScenario
+                            ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300'
+                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                        } disabled:opacity-40 disabled:cursor-not-allowed`}
+                      >
+                        {pinnedScenario ? '✕ Liberar cenário' : '📌 Fixar cenário'}
+                      </button>
+                    </div>
+                  </div>
                   {renderChart()}
+                  {results.isPossible && results.data.length > 0 && (() => {
+                    const yearMap = {};
+                    results.data.forEach(d => {
+                      const yr = Math.floor(d.month / 12);
+                      yearMap[yr] = d;
+                    });
+                    const rows = Object.entries(yearMap)
+                      .map(([yr, d]) => ({ year: Number(yr), ...d }))
+                      .filter(r => r.year > 0)
+                      .sort((a, b) => a.year - b.year);
+                    const independenceYear = Math.floor(results.months / 12);
+                    return (
+                      <details className="mt-4">
+                        <summary className="text-sm text-slate-500 cursor-pointer hover:text-slate-700 select-none py-1">
+                          Ver tabela de evolução anual
+                        </summary>
+                        <div className="mt-3 overflow-x-auto">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                                <th className="text-left py-2 pr-4 font-medium">Ano</th>
+                                <th className="text-right py-2 pr-4 font-medium">Patrimônio</th>
+                                <th className="text-right py-2 pr-4 font-medium">Renda Passiva</th>
+                                <th className="text-right py-2 font-medium">% da Meta</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map(r => {
+                                const pct = (r.passiveIncome / activeIncome) * 100;
+                                const isIndep = r.year === independenceYear;
+                                return (
+                                  <tr key={r.year} className={`border-b border-slate-100 ${isIndep ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
+                                    <td className={`py-2 pr-4 font-medium ${isIndep ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                      {r.year}{isIndep ? ' 🎯' : ''}
+                                    </td>
+                                    <td className="py-2 pr-4 text-right text-slate-600">{formatCurrency(r.patrimony || 0)}</td>
+                                    <td className={`py-2 pr-4 text-right font-medium ${isIndep ? 'text-emerald-700' : 'text-slate-700'}`}>{formatCurrency(r.passiveIncome)}</td>
+                                    <td className="py-2 text-right">
+                                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pct >= 100 ? 'bg-emerald-100 text-emerald-700' : pct >= 50 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                                        {pct.toFixed(0)}%
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
