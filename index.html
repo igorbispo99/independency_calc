@@ -128,7 +128,8 @@
       const [activeIncome, setActiveIncome] = useState(10000);
       const [initialPatrimony, setInitialPatrimony] = useState(0);
       const [savingsRate, setSavingsRate] = useState(20);
-      const [cdiRate, setCdiRate] = useState(10.5);
+      const [selicRate, setSelicRate] = useState(10.5);
+      const [cdiPercent, setCdiPercent] = useState(100);
       const [inflationRate, setInflationRate] = useState(4.5);
 
       // Estados para dados ao vivo do BCB
@@ -156,7 +157,7 @@
           const data = await fetchLiveRates();
           setLiveData(data);
           setDataStatus('live');
-          if (!isManualCdi) setCdiRate(data.cdi);
+          if (!isManualCdi) setSelicRate(data.cdi);
           if (!isManualIpca) setInflationRate(data.ipca);
         } catch (err) {
           console.error('Erro ao buscar dados do BCB:', err);
@@ -168,8 +169,8 @@
         loadLiveData();
       }, []);
 
-      const handleCdiChange = (value) => {
-        setCdiRate(value);
+      const handleSelicChange = (value) => {
+        setSelicRate(value);
         setIsManualCdi(true);
       };
 
@@ -180,8 +181,8 @@
 
       const resetToLive = (field) => {
         if (!liveData) return;
-        if (field === 'cdi') {
-          setCdiRate(liveData.cdi);
+        if (field === 'selic') {
+          setSelicRate(liveData.cdi);
           setIsManualCdi(false);
         } else {
           setInflationRate(liveData.ipca);
@@ -194,13 +195,15 @@
         return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
       };
 
+      const effectiveCdiRate = selicRate * cdiPercent / 100;
+
       // Cálculos principais
       const results = useMemo(() => {
-        if (savingsRate <= 0 || cdiRate <= 0 || activeIncome <= 0) {
+        if (savingsRate <= 0 || effectiveCdiRate <= 0 || activeIncome <= 0) {
           return { months: 0, data: [], maxMonths: 0, isPossible: false, error: "Insira valores válidos maiores que zero." };
         }
 
-        const netCdiRate = cdiRate * (1 - taxRate / 100);
+        const netCdiRate = effectiveCdiRate * (1 - taxRate / 100);
         const realAnnualRate = (1 + netCdiRate / 100) / (1 + inflationRate / 100) - 1;
 
         if (realAnnualRate <= 0) {
@@ -267,7 +270,7 @@
           nominalPatrimony: crossoverPatrimony * inflationFactor,
           inflationFactor,
         };
-      }, [activeIncome, initialPatrimony, savingsRate, cdiRate, inflationRate, taxRate]);
+      }, [activeIncome, initialPatrimony, savingsRate, effectiveCdiRate, inflationRate, taxRate]);
 
       const formatCurrency = (value) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -518,7 +521,7 @@
                   </div>
                   {initialPatrimony > 0 && (
                     <p className="text-xs text-emerald-700">
-                      Rende {formatCurrency(initialPatrimony * (Math.pow(1 + ((1 + cdiRate * (1 - taxRate / 100) / 100) / (1 + inflationRate / 100) - 1), 1 / 12) - 1))} /mês já no início (líquido de IR).
+                      Rende {formatCurrency(initialPatrimony * (Math.pow(1 + ((1 + effectiveCdiRate * (1 - taxRate / 100) / 100) / (1 + inflationRate / 100) - 1), 1 / 12) - 1))} /mês já no início (líquido de IR).
                     </p>
                   )}
                 </div>
@@ -593,47 +596,104 @@
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { label: 'CDI / SELIC (% a.a.)', value: cdiRate, onChange: handleCdiChange, isManual: isManualCdi, field: 'cdi', liveValue: liveData?.cdi, liveDate: liveData?.cdiDate },
-                    { label: 'IPCA 12m (% a.a.)', value: inflationRate, onChange: handleInflationChange, isManual: isManualIpca, field: 'ipca', liveValue: liveData?.ipca, liveDate: liveData?.ipcaDate },
-                  ].map(({ label, value, onChange, isManual, field, liveValue, liveDate }) => (
-                    <div key={field} className="flex flex-col">
-                      <label className="text-sm font-medium text-slate-700 text-center mb-2 min-h-[40px] flex items-center justify-center">
-                        {label}
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={value}
-                          onChange={(e) => onChange(Number(e.target.value))}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-center ${
-                            isManual ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-300'
-                          }`}
-                        />
-                        {isManual && liveData && (
-                          <button
-                            onClick={() => resetToLive(field)}
-                            className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 bg-white px-1.5 py-0.5 rounded border border-blue-200"
-                            title={`Restaurar valor ao vivo: ${liveValue}%`}
-                          >
-                            Ao vivo
-                          </button>
-                        )}
-                      </div>
-                      <div className="h-4 mt-1">
-                        {liveData && !isManual && (
-                          <p className="text-[10px] text-emerald-600 text-center">
-                            Ref: {formatDate(liveDate)}
-                          </p>
-                        )}
-                        {isManual && (
-                          <p className="text-[10px] text-amber-600 text-center">Valor manual</p>
-                        )}
-                      </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {/* SELIC */}
+                  <div className="flex flex-col">
+                    <label className="text-sm font-medium text-slate-700 text-center mb-2 min-h-[40px] flex items-center justify-center">
+                      SELIC (% a.a.)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.25"
+                        value={selicRate}
+                        onChange={(e) => handleSelicChange(Number(e.target.value))}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-center ${
+                          isManualCdi ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-300'
+                        }`}
+                      />
+                      {isManualCdi && liveData && (
+                        <button
+                          onClick={() => resetToLive('selic')}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 bg-white px-1.5 py-0.5 rounded border border-blue-200"
+                          title={`Restaurar valor ao vivo: ${liveData.cdi}%`}
+                        >
+                          Ao vivo
+                        </button>
+                      )}
                     </div>
-                  ))}
+                    <div className="h-4 mt-1">
+                      {liveData && !isManualCdi && (
+                        <p className="text-[10px] text-emerald-600 text-center">
+                          Ref: {formatDate(liveData.cdiDate)}
+                        </p>
+                      )}
+                      {isManualCdi && (
+                        <p className="text-[10px] text-amber-600 text-center">Valor manual</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* % do CDI */}
+                  <div className="flex flex-col">
+                    <label className="text-sm font-medium text-slate-700 text-center mb-2 min-h-[40px] flex items-center justify-center">
+                      % do CDI
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="200"
+                        value={cdiPercent}
+                        onChange={(e) => setCdiPercent(Number(e.target.value))}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-center bg-slate-50 border-slate-300"
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">%</span>
+                    </div>
+                    <div className="h-4 mt-1">
+                      <p className="text-[10px] text-slate-500 text-center">
+                        = {effectiveCdiRate.toFixed(2)}% a.a.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* IPCA */}
+                  <div className="flex flex-col">
+                    <label className="text-sm font-medium text-slate-700 text-center mb-2 min-h-[40px] flex items-center justify-center">
+                      IPCA 12m (% a.a.)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={inflationRate}
+                        onChange={(e) => handleInflationChange(Number(e.target.value))}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-center ${
+                          isManualIpca ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-300'
+                        }`}
+                      />
+                      {isManualIpca && liveData && (
+                        <button
+                          onClick={() => resetToLive('ipca')}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 bg-white px-1.5 py-0.5 rounded border border-blue-200"
+                          title={`Restaurar valor ao vivo: ${liveData.ipca}%`}
+                        >
+                          Ao vivo
+                        </button>
+                      )}
+                    </div>
+                    <div className="h-4 mt-1">
+                      {liveData && !isManualIpca && (
+                        <p className="text-[10px] text-emerald-600 text-center">
+                          Ref: {formatDate(liveData.ipcaDate)}
+                        </p>
+                      )}
+                      {isManualIpca && (
+                        <p className="text-[10px] text-amber-600 text-center">Valor manual</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -663,7 +723,7 @@
                     ))}
                   </div>
                   <p className="text-xs text-slate-500">
-                    CDI bruto: {cdiRate}% → <strong>líquido: {(cdiRate * (1 - taxRate / 100)).toFixed(2)}% a.a.</strong>
+                    CDI efetivo: {effectiveCdiRate.toFixed(2)}% ({cdiPercent}% de {selicRate}%) → <strong>líquido: {(effectiveCdiRate * (1 - taxRate / 100)).toFixed(2)}% a.a.</strong>
                   </p>
                 </div>
 
@@ -763,7 +823,7 @@
                           } else if (results.isPossible) {
                             setPinnedScenario({
                               savingsRate,
-                              cdiRate,
+                              cdiRate: effectiveCdiRate,
                               inflationRate,
                               months: results.months,
                               maxMonths: results.maxMonths,
