@@ -120,6 +120,7 @@
     function App() {
       // Estados para os parâmetros
       const [activeIncome, setActiveIncome] = useState(10000);
+      const [initialPatrimony, setInitialPatrimony] = useState(0);
       const [savingsRate, setSavingsRate] = useState(20);
       const [cdiRate, setCdiRate] = useState(10.5);
       const [inflationRate, setInflationRate] = useState(4.5);
@@ -192,13 +193,13 @@
         const monthlySavings = activeIncome * (savingsRate / 100);
 
         let currentMonths = 0;
-        let patrimony = 0;
-        let passiveIncome = 0;
+        let patrimony = Math.max(0, initialPatrimony);
+        let passiveIncome = patrimony * realMonthlyRate;
         const dataPoints = [];
-        
+
         const MAX_MONTHS = 1800;
 
-        dataPoints.push({ month: 0, passiveIncome: 0 });
+        dataPoints.push({ month: 0, passiveIncome, patrimony });
 
         while (passiveIncome < activeIncome && currentMonths < MAX_MONTHS) {
           currentMonths++;
@@ -239,7 +240,7 @@
           isPossible: currentMonths < MAX_MONTHS,
           realAnnualRate: realAnnualRate * 100,
         };
-      }, [activeIncome, savingsRate, cdiRate, inflationRate]);
+      }, [activeIncome, initialPatrimony, savingsRate, cdiRate, inflationRate]);
 
       const formatCurrency = (value) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -445,13 +446,34 @@
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">R$</span>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       value={activeIncome}
                       onChange={(e) => setActiveIncome(Number(e.target.value))}
                       className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 block">
+                    Patrimônio Inicial (R$)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">R$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={initialPatrimony}
+                      onChange={(e) => setInitialPatrimony(Math.max(0, Number(e.target.value)))}
+                      className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                  </div>
+                  {initialPatrimony > 0 && (
+                    <p className="text-xs text-emerald-700">
+                      Rende {formatCurrency(initialPatrimony * (Math.pow(1 + ((1 + cdiRate / 100) / (1 + inflationRate / 100) - 1), 1 / 12) - 1))} /mês já no início.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
