@@ -438,23 +438,25 @@
               )}
 
               {hoverInfo && (() => {
-                const tipW = isMobile ? 170 : 210, tipH = isMobile ? 68 : 78;
+                const tipW = isMobile ? 195 : 250, tipH = isMobile ? 82 : 94;
                 const tipFs = isMobile ? 10 : 11;
                 const tipX = hoverInfo.svgX + 10 + tipW > width - padding.right ? hoverInfo.svgX - tipW - 10 : hoverInfo.svgX + 10;
-                const tipY = Math.max(padding.top, Math.min(hoverInfo.svgY - 30, padding.top + chartHeight - tipH));
+                const tipY = Math.max(padding.top, Math.min(hoverInfo.svgY - 40, padding.top + chartHeight - tipH));
                 const yr = Math.floor(hoverInfo.month / 12), mo = hoverInfo.month % 12;
                 const label = yr > 0 && mo > 0 ? `${yr}a ${mo}m` : yr > 0 ? `${yr} anos` : mo > 0 ? `${mo} meses` : 'Início';
+                const futureLabel = yr > 0 ? `em ${yr}a` : `em ${mo}m`;
                 const hoverInflFactor = Math.pow(1 + inflationRate / 100, hoverInfo.month / 12);
                 const nominalPassive = hoverInfo.passiveIncome * hoverInflFactor;
+                const nominalPatrimony = hoverInfo.patrimony * hoverInflFactor;
                 return (
                   <g>
                     <line x1={hoverInfo.svgX} y1={padding.top} x2={hoverInfo.svgX} y2={padding.top + chartHeight} stroke="#64748b" strokeWidth="1" strokeDasharray="3,3" />
                     <circle cx={hoverInfo.svgX} cy={hoverInfo.svgY} r="4" fill="#10b981" stroke="white" strokeWidth="2" />
                     <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="6" fill="#1e293b" opacity="0.92" />
                     <text x={tipX + 8} y={tipY + 14} fontSize={tipFs} fill="#94a3b8">{label}</text>
-                    <text x={tipX + 8} y={tipY + 29} fontSize={tipFs} fill="#34d399" fontWeight="bold">Passiva (hoje): {formatCurrencyCompact(hoverInfo.passiveIncome)}</text>
-                    <text x={tipX + 8} y={tipY + 44} fontSize={tipFs} fill="#fbbf24">Nominal na época: {formatCurrencyCompact(nominalPassive)}</text>
-                    <text x={tipX + 8} y={tipY + 59} fontSize={tipFs} fill="#60a5fa">Patrimônio: {formatCurrencyCompact(hoverInfo.patrimony)}</text>
+                    <text x={tipX + 8} y={tipY + 30} fontSize={tipFs} fill="#34d399" fontWeight="bold">Renda: {formatCurrencyCompact(hoverInfo.passiveIncome)} (hoje) = {formatCurrencyCompact(nominalPassive)} ({futureLabel})</text>
+                    <text x={tipX + 8} y={tipY + 50} fontSize={tipFs} fill="#60a5fa" fontWeight="bold">Patrim: {formatCurrencyCompact(hoverInfo.patrimony)} (hoje) = {formatCurrencyCompact(nominalPatrimony)} ({futureLabel})</text>
+                    {hoverInfo.month > 0 && <text x={tipX + 8} y={tipY + 68} fontSize={tipFs - 1} fill="#94a3b8">inflação acumulada: {((hoverInflFactor - 1) * 100).toFixed(0)}%</text>}
                   </g>
                 );
               })()}
@@ -769,45 +771,84 @@
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex items-center gap-3">
-                    <div className="p-3 bg-blue-100 rounded-full text-blue-600 shrink-0">
-                      <TrendingUp className="w-7 h-7" />
-                    </div>
-                    <div className="min-w-0 overflow-hidden">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider" title="Patrimônio Alvo (em valores de hoje)">Patrimônio Alvo</p>
-                      <div
-                        className="text-lg sm:text-xl font-bold text-slate-800 leading-tight truncate"
-                        title={results.isPossible ? formatCurrency(results.finalPatrimony) : undefined}
-                      >
-                        {results.isPossible ? formatCurrencyCompact(results.finalPatrimony) : "---"}
+                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 sm:col-span-2">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">Patrimônio Necessário</p>
+                    {results.isPossible ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-blue-100 rounded-full text-blue-600 shrink-0">
+                            <TrendingUp className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div
+                              className="text-lg sm:text-xl font-bold text-blue-700 leading-tight"
+                              title={formatCurrency(results.finalPatrimony)}
+                            >
+                              {formatCurrencyCompact(results.finalPatrimony)}
+                            </div>
+                            <p className="text-[10px] text-blue-500">(hoje)</p>
+                          </div>
+                        </div>
+                        <span className="text-slate-400 text-lg font-light">=</span>
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-amber-100 rounded-full text-amber-600 shrink-0">
+                            <Target className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div
+                              className="text-lg sm:text-xl font-bold text-amber-700 leading-tight"
+                              title={formatCurrency(results.nominalPatrimony)}
+                            >
+                              {formatCurrencyCompact(results.nominalPatrimony)}
+                            </div>
+                            <p className="text-[10px] text-amber-500">(daqui a {results.years > 0 ? `${results.years}a` : ''}{results.remainingMonths > 0 ? `${results.years > 0 ? ' ' : ''}${results.remainingMonths}m` : ''})</p>
+                          </div>
+                        </div>
+                        <p className="w-full text-[10px] text-slate-400 mt-1">Mesmo patrimônio — o valor no extrato será maior, mas os preços também</p>
                       </div>
-                      {results.isPossible && (
-                        <p className="text-[10px] text-slate-400 truncate" title={`Nominal na época: ${formatCurrency(results.nominalPatrimony)}`}>
-                          em valores de hoje
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex items-center gap-3">
-                    <div className="p-3 bg-amber-100 rounded-full text-amber-600 shrink-0">
-                      <Target className="w-7 h-7" />
-                    </div>
-                    <div className="min-w-0 overflow-hidden">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider" title="Taxa Real Anual">Taxa Real Anual</p>
-                      <div className="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
-                        {results.isPossible ? `${results.realAnnualRate.toFixed(2)}%` : "---"}
-                      </div>
-                      <p className="text-[10px] text-slate-400">CDI líquido de IR e inflação</p>
-                    </div>
+                    ) : (
+                      <div className="text-lg font-bold text-slate-400">---</div>
+                    )}
                   </div>
                 </div>
+
+                {results.isPossible && (() => {
+                  const timeLabel = results.years > 0 && results.remainingMonths > 0
+                    ? `${results.years}a ${results.remainingMonths}m`
+                    : results.years > 0 ? `${results.years} anos` : `${results.remainingMonths} meses`;
+                  return (
+                  <div className="bg-gradient-to-r from-blue-50 to-amber-50 rounded-xl p-4 border border-slate-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+                      <div className="flex items-start gap-2 flex-1">
+                        <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                        <div className="text-xs text-slate-600 leading-relaxed space-y-1.5">
+                          <p className="text-sm font-semibold text-slate-700">
+                            <span className="text-blue-700">{formatCurrencyCompact(results.finalPatrimony)}</span>
+                            <span className="text-slate-400 mx-1">(hoje)</span>
+                            <span className="text-slate-400">=</span>
+                            <span className="text-amber-700 ml-1">{formatCurrencyCompact(results.nominalPatrimony)}</span>
+                            <span className="text-slate-400 mx-1">(daqui a {timeLabel})</span>
+                          </p>
+                          <p>
+                            São o <strong>mesmo patrimônio</strong>. O valor no extrato será maior porque os preços também sobem com a inflação. O poder de compra é idêntico.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-center sm:text-right shrink-0">
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Taxa Real</p>
+                        <p className="text-lg font-bold text-slate-800">{results.realAnnualRate.toFixed(2)}%<span className="text-xs font-normal text-slate-400"> a.a.</span></p>
+                        <p className="text-[10px] text-slate-400">rendimento acima da inflação</p>
+                      </div>
+                    </div>
+                  </div>
+                  );
+                })()}
 
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200" ref={chartContainerRef}>
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-slate-800">Evolução da Renda Passiva Mensal</h3>
-                      <p className="text-xs text-slate-400">Valores em poder de compra de hoje (descontada a inflação)</p>
+                      <p className="text-xs text-slate-400">Valores em poder de compra de hoje — o que o dinheiro realmente compra, sem ilusão da inflação</p>
                     </div>
                     <div className="flex items-center gap-2">
                       {pinnedScenario && (
@@ -859,15 +900,19 @@
                         <summary className="text-sm text-slate-500 cursor-pointer hover:text-slate-700 select-none py-1">
                           Ver tabela de evolução anual
                         </summary>
-                        <p className="text-[10px] text-slate-400 mt-2">Renda Passiva e Patrimônio em valores de hoje (poder de compra atual). A coluna "Nominal" mostra o valor que aparecerá no extrato na época.</p>
+                        <p className="text-[10px] text-slate-400 mt-2">
+                          Valores em <strong className="text-blue-500">azul</strong> = poder de compra de hoje (o que o dinheiro compra).
+                          Valores em <strong className="text-amber-500">laranja</strong> = o que vai aparecer no seu extrato bancário na época (número maior por causa da inflação, mas compra a mesma coisa).
+                        </p>
                         <div className="mt-2 overflow-x-auto">
                           <table className="w-full text-sm border-collapse">
                             <thead>
                               <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                                <th className="text-left py-2 pr-4 font-medium">Ano</th>
-                                <th className="text-right py-2 pr-4 font-medium">Patrimônio</th>
-                                <th className="text-right py-2 pr-4 font-medium">Renda Passiva</th>
-                                <th className="text-right py-2 pr-4 font-medium hidden sm:table-cell">Nominal na época</th>
+                                <th className="text-left py-2 pr-3 font-medium">Ano</th>
+                                <th className="text-right py-2 pr-3 font-medium"><span className="text-blue-500">Patrimônio (hoje)</span></th>
+                                <th className="text-right py-2 pr-3 font-medium"><span className="text-blue-500">Renda /mês (hoje)</span></th>
+                                <th className="text-right py-2 pr-3 font-medium hidden sm:table-cell"><span className="text-amber-500">Renda /mês (extrato)</span></th>
+                                <th className="text-right py-2 pr-3 font-medium hidden sm:table-cell"><span className="text-amber-500">Patrimônio (extrato)</span></th>
                                 <th className="text-right py-2 font-medium">% da Meta</th>
                               </tr>
                             </thead>
@@ -877,14 +922,16 @@
                                 const isIndep = r.year === independenceYear;
                                 const yearInflFactor = Math.pow(1 + inflationRate / 100, r.year);
                                 const nominalIncome = r.passiveIncome * yearInflFactor;
+                                const nominalPatrimony = (r.patrimony || 0) * yearInflFactor;
                                 return (
                                   <tr key={r.year} className={`border-b border-slate-100 ${isIndep ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
-                                    <td className={`py-2 pr-4 font-medium ${isIndep ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                    <td className={`py-2 pr-3 font-medium ${isIndep ? 'text-emerald-700' : 'text-slate-700'}`}>
                                       {r.year}{isIndep ? ' 🎯' : ''}
                                     </td>
-                                    <td className="py-2 pr-4 text-right text-slate-600">{formatCurrency(r.patrimony || 0)}</td>
-                                    <td className={`py-2 pr-4 text-right font-medium ${isIndep ? 'text-emerald-700' : 'text-slate-700'}`}>{formatCurrency(r.passiveIncome)}</td>
-                                    <td className="py-2 pr-4 text-right text-amber-600 hidden sm:table-cell">{formatCurrency(nominalIncome)}</td>
+                                    <td className="py-2 pr-3 text-right text-blue-600">{formatCurrency(r.patrimony || 0)}</td>
+                                    <td className={`py-2 pr-3 text-right font-medium ${isIndep ? 'text-emerald-700' : 'text-blue-600'}`}>{formatCurrency(r.passiveIncome)}</td>
+                                    <td className="py-2 pr-3 text-right text-amber-600 hidden sm:table-cell">{formatCurrency(nominalIncome)}</td>
+                                    <td className="py-2 pr-3 text-right text-amber-600 hidden sm:table-cell">{formatCurrency(nominalPatrimony)}</td>
                                     <td className="py-2 text-right">
                                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pct >= 100 ? 'bg-emerald-100 text-emerald-700' : pct >= 50 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
                                         {pct.toFixed(0)}%
@@ -941,7 +988,7 @@
                       { color: "text-blue-600", label: "Renda Ativa", desc: "Depende do seu tempo — salário, freela. Se você parar, ela para." },
                       { color: "text-emerald-600", label: "Renda Passiva", desc: "Gerada pelo seu patrimônio (juros). Cai na conta enquanto você dorme." },
                       { color: "text-amber-600", label: "Taxa Real", desc: "Rendimento acima da inflação. É o que de fato aumenta seu poder de compra." },
-                      { color: "text-purple-600", label: "Valor Real × Nominal", desc: "O gráfico mostra valores reais (poder de compra de hoje). Na prática, o valor que cairá na sua conta será maior — mas comprará a mesma coisa." },
+                      { color: "text-purple-600", label: "Valor Real × Nominal", desc: "Imagine que você precisa de R$ 5.000/mês hoje. Daqui a 20 anos, o mesmo padrão de vida pode custar R$ 12.000 — mas esses R$ 12.000 compram exatamente o que R$ 5.000 compram hoje. O gráfico mostra em \"valores de hoje\" para ser fácil comparar. O extrato mostrará o número maior." },
                     ].map((item, i) => (
                       <div key={i} className="flex items-start gap-2.5">
                         <span className={`text-xs font-bold uppercase tracking-wide ${item.color} w-24 flex-shrink-0 pt-0.5`}>{item.label}</span>
@@ -1010,27 +1057,44 @@
                         </p>
                       </div>
                       <div className="space-y-3">
-                        {results.isPossible && results.months > 0 && (
+                        {results.isPossible && results.months > 0 && (() => {
+                          const tLabel = results.years > 0 && results.remainingMonths > 0
+                            ? `${results.years} anos e ${results.remainingMonths} meses`
+                            : results.years > 0 ? `${results.years} anos` : `${results.remainingMonths} meses`;
+                          return (
                           <div className="bg-white/60 rounded-lg p-4 border border-purple-100">
                             <p className="text-xs font-semibold text-purple-700 uppercase tracking-wider mb-2">Exemplo com sua simulação</p>
                             <p className="text-sm text-purple-900/80 leading-relaxed">
-                              Em <strong>{results.years > 0 ? `${results.years} anos` : ''}{results.years > 0 && results.remainingMonths > 0 ? ' e ' : ''}{results.remainingMonths > 0 ? `${results.remainingMonths} meses` : ''}</strong>, com IPCA de {inflationRate}% a.a., a inflação acumulada será de <strong>{((results.inflationFactor - 1) * 100).toFixed(0)}%</strong>.
+                              Com IPCA de {inflationRate}% a.a., em <strong>{tLabel}</strong> a inflação acumulada será de <strong>{((results.inflationFactor - 1) * 100).toFixed(0)}%</strong>. Isso significa:
                             </p>
-                            <div className="mt-3 space-y-1.5">
-                              <div className="flex justify-between text-sm">
-                                <span className="text-purple-700">Renda passiva (poder de compra):</span>
-                                <span className="font-bold text-emerald-700">{formatCurrency(activeIncome)}</span>
+                            <div className="mt-3 space-y-2">
+                              <div className="bg-purple-50/50 rounded-lg p-3 space-y-1.5">
+                                <p className="text-xs font-medium text-purple-500 uppercase tracking-wider">Renda passiva mensal</p>
+                                <p className="text-sm text-purple-900">
+                                  <strong className="text-emerald-700">{formatCurrency(activeIncome)}</strong>
+                                  <span className="text-purple-400 mx-1.5">(hoje)</span>
+                                  <span className="text-purple-400">=</span>
+                                  <strong className="text-amber-600 ml-1.5">{formatCurrency(results.nominalPassiveIncome)}</strong>
+                                  <span className="text-purple-400 mx-1.5">(daqui a {tLabel})</span>
+                                </p>
                               </div>
-                              <div className="flex justify-between text-sm">
-                                <span className="text-purple-700">Valor nominal no extrato:</span>
-                                <span className="font-bold text-amber-600">{formatCurrency(results.nominalPassiveIncome)}</span>
+                              <div className="bg-purple-50/50 rounded-lg p-3 space-y-1.5">
+                                <p className="text-xs font-medium text-purple-500 uppercase tracking-wider">Patrimônio</p>
+                                <p className="text-sm text-purple-900">
+                                  <strong className="text-blue-700">{formatCurrencyCompact(results.finalPatrimony)}</strong>
+                                  <span className="text-purple-400 mx-1.5">(hoje)</span>
+                                  <span className="text-purple-400">=</span>
+                                  <strong className="text-amber-600 ml-1.5">{formatCurrencyCompact(results.nominalPatrimony)}</strong>
+                                  <span className="text-purple-400 mx-1.5">(daqui a {tLabel})</span>
+                                </p>
                               </div>
                             </div>
                             <p className="text-xs text-purple-600 mt-2 italic">
-                              Ambos representam a mesma capacidade de compra — apenas os preços terão subido proporcionalmente.
+                              Os valores são diferentes, mas compram exatamente as mesmas coisas. O extrato mostra o número maior — os preços também serão maiores.
                             </p>
                           </div>
-                        )}
+                          );
+                        })()}
                         {(!results.isPossible || results.months <= 0) && (
                           <div className="bg-white/60 rounded-lg p-4 border border-purple-100">
                             <p className="text-sm text-purple-900/80 leading-relaxed">
