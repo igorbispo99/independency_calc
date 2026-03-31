@@ -14,6 +14,12 @@
   
   <!-- Carregando Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Remove setinhas dos inputs numéricos */
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  </style>
 </head>
 <body>
   <div id="root"></div>
@@ -132,6 +138,16 @@
       const [isManualIpca, setIsManualIpca] = useState(false);
       const [hoverInfo, setHoverInfo] = useState(null);
       const [pinnedScenario, setPinnedScenario] = useState(null);
+      const chartContainerRef = React.useRef(null);
+      const [chartContainerWidth, setChartContainerWidth] = React.useState(800);
+
+      React.useEffect(() => {
+        const el = chartContainerRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver(([entry]) => setChartContainerWidth(Math.floor(entry.contentRect.width)));
+        ro.observe(el);
+        return () => ro.disconnect();
+      }, []);
 
       const loadLiveData = useCallback(async () => {
         setDataStatus('loading');
@@ -263,9 +279,12 @@
       const renderChart = () => {
         if (!results.isPossible || results.data.length === 0) return null;
 
-        const width = 800;
-        const height = 300;
-        const padding = { top: 20, right: 20, bottom: 40, left: 80 };
+        const width = chartContainerWidth || 800;
+        const isMobile = width < 480;
+        const height = isMobile ? 220 : 300;
+        const padding = { top: 20, right: isMobile ? 12 : 20, bottom: 36, left: isMobile ? 56 : 80 };
+        const fontSize = isMobile ? 10 : 12;
+        const fontSizeSm = isMobile ? 9 : 10;
 
         const chartWidth = width - padding.left - padding.right;
         const chartHeight = height - padding.top - padding.bottom;
@@ -286,7 +305,8 @@
         const activeIncomeY = getY(activeIncome);
 
         const maxYears = Math.ceil(maxX / 12);
-        const labelStep = Math.max(1, Math.ceil(maxYears / 8));
+        const maxLabels = isMobile ? 4 : 8;
+        const labelStep = Math.max(1, Math.ceil(maxYears / maxLabels));
 
         const pinnedPath = pinnedScenario && pinnedScenario.data.length > 0
           ? pinnedScenario.data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(d.month)} ${getY(d.passiveIncome)}`).join(' ')
@@ -321,10 +341,11 @@
         };
 
         return (
-          <div className="overflow-x-auto w-full">
+          <div className="w-full">
             <svg
-              viewBox={`0 0 ${width} ${height}`}
-              className="w-full h-auto min-w-[600px] cursor-crosshair"
+              width={width}
+              height={height}
+              className="cursor-crosshair block"
               onMouseMove={handleMouseMove}
               onMouseLeave={() => setHoverInfo(null)}
             >
@@ -340,12 +361,12 @@
                   <g key={factor}>
                     <line x1={padding.left} y1={yPos} x2={width - padding.right} y2={yPos} stroke={isMid ? "#cbd5e1" : "#e2e8f0"} strokeDasharray={isMid ? "3,5" : "4,4"} />
                     {isMain && (
-                      <text x={padding.left - 10} y={yPos + 4} textAnchor="end" fontSize="12" fill="#64748b">
-                        {formatCurrency(yVal)}
+                      <text x={padding.left - 6} y={yPos + 4} textAnchor="end" fontSize={fontSize} fill="#64748b">
+                        {isMobile ? formatCurrencyCompact(yVal) : formatCurrency(yVal)}
                       </text>
                     )}
-                    {isMid && (
-                      <text x={padding.left - 10} y={yPos + 4} textAnchor="end" fontSize="10" fill="#94a3b8">
+                    {isMid && !isMobile && (
+                      <text x={padding.left - 6} y={yPos + 4} textAnchor="end" fontSize={fontSizeSm} fill="#94a3b8">
                         {Math.round(factor * 100)}%
                       </text>
                     )}
@@ -358,9 +379,9 @@
                 const xPos = getX(i * 12);
                 return (
                   <g key={i}>
-                    <line x1={xPos} y1={padding.top + chartHeight} x2={xPos} y2={padding.top + chartHeight + 5} stroke="#94a3b8" />
-                    <text x={xPos} y={padding.top + chartHeight + 20} textAnchor="middle" fontSize="12" fill="#64748b">
-                      Ano {i}
+                    <line x1={xPos} y1={padding.top + chartHeight} x2={xPos} y2={padding.top + chartHeight + 4} stroke="#94a3b8" />
+                    <text x={xPos} y={padding.top + chartHeight + 16} textAnchor="middle" fontSize={fontSize} fill="#64748b">
+                      {isMobile ? `${i}a` : `Ano ${i}`}
                     </text>
                   </g>
                 );
@@ -381,35 +402,42 @@
               <path d={passivePath} fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
 
               <line x1={padding.left} y1={activeIncomeY} x2={width - padding.right} y2={activeIncomeY} stroke="#3b82f6" strokeWidth="2" strokeDasharray="6,4" />
-              <text x={width - padding.right} y={activeIncomeY - 8} textAnchor="end" fontSize="12" fill="#3b82f6" fontWeight="bold">
-                Renda Ativa (Alvo)
-              </text>
+              {!isMobile && (
+                <text x={width - padding.right} y={activeIncomeY - 6} textAnchor="end" fontSize={fontSize} fill="#3b82f6" fontWeight="bold">
+                  Renda Ativa (Alvo)
+                </text>
+              )}
 
               {results.months > 0 && results.months < results.maxMonths && (
                 <g>
                   <line x1={crossoverX} y1={padding.top} x2={crossoverX} y2={padding.top + chartHeight} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="4,4" />
                   <circle cx={crossoverX} cy={activeIncomeY} r="6" fill="#f59e0b" />
-                  <rect x={crossoverX - 60} y={padding.top - 15} width="120" height="24" rx="4" fill="#f59e0b" />
-                  <text x={crossoverX} y={padding.top + 2} textAnchor="middle" fontSize="12" fill="white" fontWeight="bold">
-                    Independência!
-                  </text>
+                  {!isMobile && (
+                    <>
+                      <rect x={crossoverX - 55} y={padding.top - 14} width="110" height="22" rx="4" fill="#f59e0b" />
+                      <text x={crossoverX} y={padding.top + 1} textAnchor="middle" fontSize={fontSize} fill="white" fontWeight="bold">
+                        Independência!
+                      </text>
+                    </>
+                  )}
                 </g>
               )}
 
               {hoverInfo && (() => {
-                const tipW = 190, tipH = 62;
-                const tipX = hoverInfo.svgX + 12 + tipW > width - padding.right ? hoverInfo.svgX - tipW - 12 : hoverInfo.svgX + 12;
+                const tipW = isMobile ? 160 : 190, tipH = isMobile ? 54 : 62;
+                const tipFs = isMobile ? 10 : 11;
+                const tipX = hoverInfo.svgX + 10 + tipW > width - padding.right ? hoverInfo.svgX - tipW - 10 : hoverInfo.svgX + 10;
                 const tipY = Math.max(padding.top, Math.min(hoverInfo.svgY - 30, padding.top + chartHeight - tipH));
                 const yr = Math.floor(hoverInfo.month / 12), mo = hoverInfo.month % 12;
                 const label = yr > 0 && mo > 0 ? `${yr}a ${mo}m` : yr > 0 ? `${yr} anos` : mo > 0 ? `${mo} meses` : 'Início';
                 return (
                   <g>
                     <line x1={hoverInfo.svgX} y1={padding.top} x2={hoverInfo.svgX} y2={padding.top + chartHeight} stroke="#64748b" strokeWidth="1" strokeDasharray="3,3" />
-                    <circle cx={hoverInfo.svgX} cy={hoverInfo.svgY} r="5" fill="#10b981" stroke="white" strokeWidth="2" />
+                    <circle cx={hoverInfo.svgX} cy={hoverInfo.svgY} r="4" fill="#10b981" stroke="white" strokeWidth="2" />
                     <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="6" fill="#1e293b" opacity="0.92" />
-                    <text x={tipX + 10} y={tipY + 17} fontSize="11" fill="#94a3b8">{label}</text>
-                    <text x={tipX + 10} y={tipY + 34} fontSize="11" fill="#34d399" fontWeight="bold">Passiva: {formatCurrency(hoverInfo.passiveIncome)}</text>
-                    <text x={tipX + 10} y={tipY + 51} fontSize="11" fill="#60a5fa">Patrimônio: {formatCurrency(hoverInfo.patrimony)}</text>
+                    <text x={tipX + 8} y={tipY + 14} fontSize={tipFs} fill="#94a3b8">{label}</text>
+                    <text x={tipX + 8} y={tipY + 29} fontSize={tipFs} fill="#34d399" fontWeight="bold">Passiva: {formatCurrencyCompact(hoverInfo.passiveIncome)}</text>
+                    <text x={tipX + 8} y={tipY + 44} fontSize={tipFs} fill="#60a5fa">Patrimônio: {formatCurrencyCompact(hoverInfo.patrimony)}</text>
                   </g>
                 );
               })()}
@@ -448,8 +476,9 @@
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">R$</span>
                     <input
                       type="number"
-                      value={activeIncome}
-                      onChange={(e) => setActiveIncome(Number(e.target.value))}
+                      value={activeIncome || ''}
+                      placeholder="0"
+                      onChange={(e) => setActiveIncome(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                       className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     />
                   </div>
@@ -464,8 +493,9 @@
                     <input
                       type="number"
                       min="0"
-                      value={initialPatrimony}
-                      onChange={(e) => setInitialPatrimony(Math.max(0, Number(e.target.value)))}
+                      value={initialPatrimony || ''}
+                      placeholder="0"
+                      onChange={(e) => setInitialPatrimony(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                       className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     />
                   </div>
@@ -604,7 +634,7 @@
                       <Clock className="w-7 h-7" />
                     </div>
                     <div className="min-w-0 overflow-hidden">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider truncate" title="Tempo Necessário">Tempo Necessário</p>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider" title="Tempo Necessário">Tempo Necessário</p>
                       {results.isPossible ? (
                         <div className="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
                           {results.years > 0 && <span>{results.years}a</span>}
@@ -636,7 +666,7 @@
                       <TrendingUp className="w-7 h-7" />
                     </div>
                     <div className="min-w-0 overflow-hidden">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider truncate" title="Patrimônio Alvo">Patrimônio Alvo</p>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider" title="Patrimônio Alvo">Patrimônio Alvo</p>
                       <div
                         className="text-lg sm:text-xl font-bold text-slate-800 leading-tight truncate"
                         title={results.isPossible ? formatCurrency(results.finalPatrimony) : undefined}
@@ -656,16 +686,16 @@
                       <Target className="w-7 h-7" />
                     </div>
                     <div className="min-w-0 overflow-hidden">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider truncate" title="Taxa Real Anual">Taxa Real Anual</p>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider" title="Taxa Real Anual">Taxa Real Anual</p>
                       <div className="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
                         {results.isPossible ? `${results.realAnnualRate.toFixed(2)}%` : "---"}
                       </div>
-                      <p className="text-[10px] text-slate-400 truncate">CDI descontado da inflação</p>
+                      <p className="text-[10px] text-slate-400">CDI descontado da inflação</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200" ref={chartContainerRef}>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-slate-800">Evolução da Renda Passiva Mensal</h3>
                     <div className="flex items-center gap-2">
@@ -757,60 +787,90 @@
               </div>
             </div>
 
-            {/* Seção explicativa */}
-            <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200 space-y-8">
-              <div className="text-center space-y-2">
-                <h2 className="text-xl font-bold text-slate-900">O que é Independência Financeira?</h2>
-                <p className="text-slate-500 text-sm max-w-2xl mx-auto">Entenda o conceito por trás do simulador</p>
+            {/* Seção explicativa reformulada */}
+            <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200 space-y-10">
+              <div className="text-center space-y-3">
+                <h2 className="text-2xl font-bold text-slate-900">Como entender este simulador?</h2>
+                <p className="text-slate-500 text-base max-w-2xl mx-auto">
+                  Este não é apenas um gráfico de números, é o mapa para a sua liberdade de escolha.
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                    <h3 className="font-semibold text-slate-800 text-sm uppercase tracking-wide">Renda Ativa</h3>
-                  </div>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    É o dinheiro que você recebe em troca do seu tempo — salário, freelances, negócios que exigem sua presença. Se você parar, ela some.
-                  </p>
+              {/* Guia de Uso */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Como usar em 4 passos</h3>
+                  <ol className="space-y-2.5">
+                    {[
+                      { label: "Defina o alvo", desc: "Informe sua renda ativa mensal — quanto ganha hoje ou quanto quer receber no futuro." },
+                      { label: "Ajuste a poupança", desc: "Defina a taxa de poupança. Quanto maior, mais rápido o gráfico sobe." },
+                      { label: "Adicione o que já tem", desc: "Coloque seu patrimônio inicial investido. Mesmo um valor pequeno acelera bastante." },
+                      { label: "Observe o cruzamento", desc: "O ponto amarelo no gráfico é o seu dia da independência financeira." },
+                    ].map((item, i) => (
+                      <li key={i} className="flex items-start gap-3">
+                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                        <p className="text-sm text-slate-600 leading-snug"><strong className="text-slate-800 font-semibold">{item.label}:</strong> {item.desc}</p>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                    <h3 className="font-semibold text-slate-800 text-sm uppercase tracking-wide">Renda Passiva</h3>
-                  </div>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    É o dinheiro gerado pelo seu patrimônio investido — juros, dividendos, aluguéis. Ele cresce enquanto você dorme e não depende do seu tempo.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-                    <h3 className="font-semibold text-slate-800 text-sm uppercase tracking-wide">O Cruzamento</h3>
-                  </div>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    Independência financeira é o momento em que sua renda passiva se iguala à sua renda ativa. A partir daí, trabalhar vira uma escolha — não uma necessidade.
-                  </p>
-                </div>
-              </div>
 
-              <div className="border-t border-slate-100 pt-6">
-                <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 space-y-3">
-                  <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-amber-500">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                    </svg>
-                    A propriedade mais contraintuitiva deste cálculo
+                <div className="bg-slate-50 rounded-xl p-5 border border-slate-100">
+                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-blue-500" />
+                    Dicionário rápido
                   </h3>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    O tempo necessário para atingir independência financeira <strong className="text-slate-800">não depende do tamanho da sua renda</strong>. Não importa se você ganha R$3.000 ou R$300.000 — o prazo será exatamente o mesmo.
-                  </p>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    A razão é simples: tudo escala proporcionalmente. Quem ganha mais também poupa mais (mesma %) e precisa acumular um patrimônio igualmente maior para gerar a mesma renda passiva relativa. O alvo cresce na mesma velocidade que a contribuição mensal. O único fator que realmente define o prazo é a sua <strong className="text-slate-800">taxa de poupança</strong> — a fatia do que você ganha que você escolhe guardar.
-                  </p>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    Experimente: altere a renda ativa para qualquer valor e veja que o tempo não muda. O que move o ponteiro é o percentual que você guarda, não o número no seu holerite.
-                  </p>
+                  <div className="space-y-3">
+                    {[
+                      { color: "text-blue-600", label: "Renda Ativa", desc: "Depende do seu tempo — salário, freela. Se você parar, ela para." },
+                      { color: "text-emerald-600", label: "Renda Passiva", desc: "Gerada pelo seu patrimônio (juros). Cai na conta enquanto você dorme." },
+                      { color: "text-amber-600", label: "Taxa Real", desc: "Rendimento acima da inflação. É o que de fato aumenta seu poder de compra." },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-start gap-2.5">
+                        <span className={`text-xs font-bold uppercase tracking-wide ${item.color} w-24 flex-shrink-0 pt-0.5`}>{item.label}</span>
+                        <p className="text-sm text-slate-600 leading-snug">{item.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* O Segredo da Taxa de Poupança */}
+              <div className="border-t border-slate-100 pt-8">
+                <div className="bg-amber-50 rounded-2xl p-6 md:p-8 border border-amber-100 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-10">
+                    <Target className="w-24 h-24 text-amber-900" />
+                  </div>
+                  
+                  <div className="relative z-10 space-y-4">
+                    <h3 className="text-lg font-bold text-amber-900 flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                      </svg>
+                      O conceito mais importante (e surpreendente)
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <p className="text-amber-900/80 text-sm leading-relaxed">
+                        Se você começar do zero, o tempo para sua independência <strong className="text-amber-900">não depende de quanto você ganha</strong>, mas sim de <strong className="text-amber-900">qual porcentagem</strong> do seu salário você guarda.
+                      </p>
+                      <p className="text-amber-900/80 text-sm leading-relaxed">
+                        Quem ganha R$ 5.000 e guarda 20% chegará à liberdade no <strong>mesmo dia</strong> que alguém que ganha R$ 50.000 e guarda os mesmos 20%. 
+                      </p>
+                    </div>
+
+                    <div className="bg-white/50 rounded-lg p-4 mt-2">
+                      <p className="text-amber-900 text-sm italic">
+                        <strong>Por que?</strong> Porque quanto mais você ganha, maior tende a ser seu custo de vida (sua meta). O alvo cresce na mesma proporção que sua capacidade de poupar. O único jeito de "cortar caminho" é aumentando sua <strong>Taxa de Poupança</strong> ou já começando com um <strong>Patrimônio Inicial</strong>.
+                      </p>
+                    </div>
+                    
+                    <div className="pt-2">
+                      <p className="text-xs text-amber-800 font-medium">
+                        💡 Teste no simulador: Mude sua renda para o dobro e veja que o tempo não muda. Depois, mude sua taxa de poupança de 10% para 20% e veja os anos despencarem!
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
